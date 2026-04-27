@@ -19,16 +19,15 @@ let fingerGroups = [
 ];
 
 function preload() {
-  handPose = ml5.handPose({
-    flipped: true
-  });
+  // 不要使用 flipped:true，避免鏡像錯亂
+  handPose = ml5.handPose();
 }
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
 
   startButton = createButton("啟動攝影機");
-  startButton.position(width / 2 - 60, height / 2);
+  startButton.position(width / 2 - 70, height / 2);
   startButton.style("font-size", "20px");
   startButton.style("padding", "12px 24px");
   startButton.style("border-radius", "12px");
@@ -40,17 +39,12 @@ function setup() {
 }
 
 function startCamera() {
-  video = createCapture(
-    {
-      video: {
-        facingMode: "user"
-      },
-      audio: false
+  video = createCapture({
+    video: {
+      facingMode: "user"
     },
-    function () {
-      console.log("攝影機已啟動");
-    }
-  );
+    audio: false
+  });
 
   video.size(640, 480);
   video.hide();
@@ -64,39 +58,50 @@ function startCamera() {
 function draw() {
   background("#e7c6ff");
 
-  if (!cameraStarted) {
+  if (!cameraStarted || !video || video.width === 0 || video.height === 0) {
     fill(80);
     noStroke();
     textAlign(CENTER, CENTER);
-    textSize(20);
+    textSize(22);
     text("請點擊按鈕啟動攝影機", width / 2, height / 2 - 60);
     return;
   }
 
   calculateVideoDisplaySize();
 
-  image(video, videoX, videoY, displayW, displayH);
+  drawMirroredVideo();
 
   drawHands();
 }
 
 function calculateVideoDisplaySize() {
+  // 攝影機顯示範圍最多為全螢幕寬高的 60%
   let maxW = width * 0.6;
   let maxH = height * 0.6;
 
-  let videoRatio = video.width / video.height;
-  let screenRatio = maxW / maxH;
+  // 使用等比例縮放，避免畫面變形
+  let scale = min(maxW / video.width, maxH / video.height);
 
-  if (videoRatio > screenRatio) {
-    displayW = maxW;
-    displayH = displayW / videoRatio;
-  } else {
-    displayH = maxH;
-    displayW = displayH * videoRatio;
-  }
+  displayW = video.width * scale;
+  displayH = video.height * scale;
 
   videoX = (width - displayW) / 2;
   videoY = (height - displayH) / 2;
+}
+
+function drawMirroredVideo() {
+  push();
+
+  // 移動到攝影機畫面右側
+  translate(videoX + displayW, videoY);
+
+  // 水平翻轉，形成正常自拍鏡像效果
+  scale(-1, 1);
+
+  // 繪製等比例縮放後的攝影機畫面
+  image(video, 0, 0, displayW, displayH);
+
+  pop();
 }
 
 function drawHands() {
@@ -106,6 +111,7 @@ function drawHands() {
   if (hands.length > 0) {
     for (let hand of hands) {
       if (hand.confidence > 0.1) {
+
         if (hand.handedness == "Left") {
           stroke(255, 0, 255);
           fill(255, 0, 255);
@@ -125,9 +131,10 @@ function drawHands() {
             let pointB = hand.keypoints[indexB];
 
             if (pointA && pointB) {
-              let x1 = videoX + pointA.x * scaleX;
+              let x1 = mirrorX(pointA.x);
               let y1 = videoY + pointA.y * scaleY;
-              let x2 = videoX + pointB.x * scaleX;
+
+              let x2 = mirrorX(pointB.x);
               let y2 = videoY + pointB.y * scaleY;
 
               line(x1, y1, x2, y2);
@@ -140,7 +147,7 @@ function drawHands() {
         for (let i = 0; i < hand.keypoints.length; i++) {
           let keypoint = hand.keypoints[i];
 
-          let x = videoX + keypoint.x * scaleX;
+          let x = mirrorX(keypoint.x);
           let y = videoY + keypoint.y * scaleY;
 
           circle(x, y, 12);
@@ -148,6 +155,12 @@ function drawHands() {
       }
     }
   }
+}
+
+// 將手部偵測點的 X 座標同步鏡像
+function mirrorX(x) {
+  let scaleX = displayW / video.width;
+  return videoX + displayW - x * scaleX;
 }
 
 function gotHands(results) {
@@ -158,6 +171,6 @@ function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
 
   if (startButton) {
-    startButton.position(width / 2 - 60, height / 2);
+    startButton.position(width / 2 - 70, height / 2);
   }
 }
